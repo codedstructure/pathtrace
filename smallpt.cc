@@ -5,6 +5,9 @@
 #include <stdio.h>  //        Remove "-fopenmp" for g++ version < 4.2
 #include <vector>
 
+#include <thread>
+#include <future>
+
 #include "vec.h"
 
 struct Ray { vec3 o, d; Ray(vec3 o_, vec3 d_) : o(o_), d(d_) {} };
@@ -67,7 +70,7 @@ void buildScene() {
     scene.push_back(new Sphere(1e5, vec3(50, 1e5, 81.6),    vec3(),vec3(.75,.75,.75),DIFF));//Botm
     scene.push_back(new Sphere(1e5, vec3(50,-1e5+81.6,81.6),vec3(),vec3(.75,.75,.75),DIFF));//Top
     scene.push_back(new Sphere(16.5,vec3(27,16.5,47),       vec3(),vec3(1,1,1)*.999, SPEC));//Mirr
-    scene.push_back(new Sphere(16.5,vec3(73,16.5,78),       vec3(),vec3(1,1,1)*.999, REFR));//Glas
+    //scene.push_back(new Sphere(16.5,vec3(73,16.5,78),       vec3(),vec3(1,1,1)*.999, REFR));//Glas
     scene.push_back(new Sphere(1.5, vec3(50,81.6-16.5,81.6),vec3(4,4,4)*100,  vec3(), DIFF)); //Lite
         /*
            Sphere(1e5, vec3(50, 1e5, 81.6), vec3(), vec3(.75, .75, .75), DIFF),
@@ -137,6 +140,7 @@ vec3 radiance(const Ray &r, int depth, unsigned short *Xi, int E=1) {
         return obj->e*E+e+f*radiance(Ray(x,d),depth,Xi,0);
     } else if (obj->refl == SPEC)            // Ideal SPECULAR reflection
         return obj->e + f * radiance(Ray(x,r.d-n*2*dot(n, r.d)),depth,Xi);
+    // else REFR...
     Ray reflRay(x, r.d-n*2*dot(n, r.d));     // Ideal dielectric REFRACTION
     bool into = dot(n, nl)>0;                // Ray from outside going in?
     double nc=1, nt=1.5, nnt=into?nc/nt:nt/nc, ddn=dot(r.d, nl), cos2t;
@@ -158,32 +162,61 @@ extern "C" void addLight(const double radius, double x, double y, double z) {
     scene.push_back(new Sphere(radius, vec3(x, y, z), vec3(20, 20, 20), vec3(), DIFF));
 }
 
+std::mutex row_mutex;
+int row_number [1];
+
+std::vector<std::future<void>> thread_list;
+
+int get_row_number() {
+    std::lock_guard<std::mutex> guard(row_mutex);
+    return (*row_number)++;
+}
+
+void calc_row(int y, int w, int h, Ray cam, int samps, vec3 cx, vec3 cy, vec3* c) {
+    for (unsigned short x=0, Xi[3]={0,0,static_cast<unsigned short>(y*y*y)}; x<w; x++) {   // Loop cols
+        for (int sy=0, i=(h-y-1)*w+x; sy<2; sy++) {    // 2x2 subpixel rows
+            for (int sx=0; sx<2; sx++) {        // 2x2 subpixel cols
+                auto r  = vec3();
+                for (int s=0; s<samps; s++) {
+                    double r1=2*erand48(Xi), dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1);
+                    double r2=2*erand48(Xi), dy=r2<1 ? sqrt(r2)-1: 1-sqrt(2-r2);
+
+                    vec3 d = cx*( ( (sx+.5 + dx)/2 + x)/w - .5) +
+                        cy*( ( (sy+.5 + dy)/2 + y)/h - .5) + cam.d;
+                    r = r + radiance(Ray(cam.o+d*140,normalize(d)),0,Xi)*(1./samps);
+
+                } // Camera rays are pushed ^^^^^ forward to start in interior
+                c[i] = c[i] + vec3(clamp(r.x),clamp(r.y),clamp(r.z))*.25;
+            }
+        }
+    }
+}
+
 extern "C" void render(const char* const fn, int w, int h, int samps) {
 
-    Ray cam(vec3(50,52,295.6), normalize(vec3(0,-0.042612,-1))); // cam pos, dir
+    const Ray cam(vec3(50,52,295.6), normalize(vec3(0,-0.042612,-1))); // cam pos, dir
 
-    vec3 cx=vec3(w*.5135/h);
-    vec3 cy=normalize(cx%cam.d)*.5135;
-    vec3 r;
-    vec3 *c=new vec3[w*h];
+    const vec3 cx=vec3(w*.5135/h);
+    const vec3 cy=normalize(cx%cam.d)*.5135;
+    vec3 *const c=new vec3[w*h];
 
-    for (int y=0; y<h; y++) {                       // Loop over image rows
+    int hw_threads = std::thread::hardware_concurrency();
+    if (!hw_threads) {
+        hw_threads = 1;
+    }
+    fprintf(stderr, "Threads: %d\n", hw_threads);
+
+    int y;
+    while ((y=get_row_number()) < h) {
         fprintf(stderr,"\rRendering (%d spp) %5.2f%%",samps*4,100.*y/(h-1));
-        for (unsigned short x=0, Xi[3]={0,0,y*y*y}; x<w; x++)   // Loop cols
-            for (int sy=0, i=(h-y-1)*w+x; sy<2; sy++)     // 2x2 subpixel rows
-                for (int sx=0; sx<2; sx++) {        // 2x2 subpixel cols
-                    r  = vec3();
-                    for (int s=0; s<samps; s++) {
-                        double r1=2*erand48(Xi), dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1);
-                        double r2=2*erand48(Xi), dy=r2<1 ? sqrt(r2)-1: 1-sqrt(2-r2);
 
-                        vec3 d = cx*( ( (sx+.5 + dx)/2 + x)/w - .5) +
-                            cy*( ( (sy+.5 + dy)/2 + y)/h - .5) + cam.d;
-                        r = r + radiance(Ray(cam.o+d*140,normalize(d)),0,Xi)*(1./samps);
-
-                    } // Camera rays are pushed ^^^^^ forward to start in interior
-                    c[i] = c[i] + vec3(clamp(r.x),clamp(r.y),clamp(r.z))*.25;
-                }
+        thread_list.push_back(std::async(calc_row, y, w, h, cam, samps, cx, cy, c));
+        if (thread_list.size() >= 2*hw_threads) {
+            for (auto i=0; i<hw_threads; i++) {
+                thread_list.rbegin()->get();
+                thread_list.pop_back();
+            }
+        }
     }
 
     FILE *f = fopen(fn, "wb");         // Write image to PPM file.

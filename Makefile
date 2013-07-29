@@ -6,8 +6,9 @@ BIN=smallpt
 SHARED_LIB=smallpt.so
 IMAGE_PPM=image.ppm
 
-CC=g++
-CFLAGS=-MMD -g -O3
+#CC=g++
+CC=clang++
+CFLAGS=-MMD -g -O3 --std=c++11 --stdlib=libc++
 CXX=${CC}
 CXXFLAGS=${CFLAGS}
 
@@ -26,7 +27,7 @@ clean:
 	$(RM) $(OBJECTS) $(DEPS) $(BIN) ${SHARED_LIB} ${IMAGE_PPM}
 
 ${IMAGE_PPM}: $(BIN)
-	./${BIN} 20
+	time ./${BIN} 20
 
 display: $(IMAGE_PPM)
 	display ${IMAGE_PPM} &
