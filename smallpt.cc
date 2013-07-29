@@ -70,7 +70,7 @@ void buildScene() {
     scene.push_back(new Sphere(1e5, vec3(50, 1e5, 81.6),    vec3(),vec3(.75,.75,.75),DIFF));//Botm
     scene.push_back(new Sphere(1e5, vec3(50,-1e5+81.6,81.6),vec3(),vec3(.75,.75,.75),DIFF));//Top
     scene.push_back(new Sphere(16.5,vec3(27,16.5,47),       vec3(),vec3(1,1,1)*.999, SPEC));//Mirr
-    //scene.push_back(new Sphere(16.5,vec3(73,16.5,78),       vec3(),vec3(1,1,1)*.999, REFR));//Glas
+    scene.push_back(new Sphere(16.5,vec3(73,16.5,78),       vec3(),vec3(1,1,1)*.999, REFR));//Glas
     scene.push_back(new Sphere(1.5, vec3(50,81.6-16.5,81.6),vec3(4,4,4)*100,  vec3(), DIFF)); //Lite
         /*
            Sphere(1e5, vec3(50, 1e5, 81.6), vec3(), vec3(.75, .75, .75), DIFF),
@@ -165,8 +165,6 @@ extern "C" void addLight(const double radius, double x, double y, double z) {
 std::mutex row_mutex;
 int row_number [1];
 
-std::vector<std::future<void>> thread_list;
-
 int get_row_number() {
     std::lock_guard<std::mutex> guard(row_mutex);
     return (*row_number)++;
@@ -178,21 +176,25 @@ void calc_row(int y, int w, int h, Ray cam, int samps, vec3 cx, vec3 cy, vec3* c
             for (int sx=0; sx<2; sx++) {        // 2x2 subpixel cols
                 auto r  = vec3();
                 for (int s=0; s<samps; s++) {
-                    double r1=2*erand48(Xi), dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1);
-                    double r2=2*erand48(Xi), dy=r2<1 ? sqrt(r2)-1: 1-sqrt(2-r2);
+                    double r1=2*erand48(Xi);
+                    double dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1);
+                    double r2=2*erand48(Xi);
+                    double dy=r2<1 ? sqrt(r2)-1: 1-sqrt(2-r2);
 
                     vec3 d = cx*( ( (sx+.5 + dx)/2 + x)/w - .5) +
-                        cy*( ( (sy+.5 + dy)/2 + y)/h - .5) + cam.d;
+                             cy*( ( (sy+.5 + dy)/2 + y)/h - .5) +
+                             cam.d;
                     r = r + radiance(Ray(cam.o+d*140,normalize(d)),0,Xi)*(1./samps);
 
                 } // Camera rays are pushed ^^^^^ forward to start in interior
-                c[i] = c[i] + vec3(clamp(r.x),clamp(r.y),clamp(r.z))*.25;
+                c[i] = c[i] + vec3(clamp(r.x),clamp(r.y),clamp(r.z)) / 4;
             }
         }
     }
 }
 
 extern "C" void render(const char* const fn, int w, int h, int samps) {
+    std::vector<std::thread> thread_list;
 
     const Ray cam(vec3(50,52,295.6), normalize(vec3(0,-0.042612,-1))); // cam pos, dir
 
@@ -210,14 +212,24 @@ extern "C" void render(const char* const fn, int w, int h, int samps) {
     while ((y=get_row_number()) < h) {
         fprintf(stderr,"\rRendering (%d spp) %5.2f%%",samps*4,100.*y/(h-1));
 
-        thread_list.push_back(std::async(calc_row, y, w, h, cam, samps, cx, cy, c));
+#ifdef SINGLE_THREADED
+        calc_row(y,w,h,cam,samps,cx,cy,c);
+        continue;
+#endif
+        thread_list.push_back(std::thread(calc_row, y, w, h, cam, samps, cx, cy, c));
         if (thread_list.size() >= 2*hw_threads) {
             for (auto i=0; i<hw_threads; i++) {
-                thread_list.rbegin()->get();
+                thread_list.rbegin()->join();
                 thread_list.pop_back();
             }
         }
     }
+#ifndef SINGLE_THREADED
+    while (thread_list.size()) {
+        thread_list.rbegin()->join();
+        thread_list.pop_back();
+    }
+#endif
 
     FILE *f = fopen(fn, "wb");         // Write image to PPM file.
     fprintf(f, "P6\n%d %d\n%d\n", w, h, 255);

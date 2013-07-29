@@ -6,7 +6,8 @@ import threading
 
 
 def main():
-    dll = CDLL('smallpt.so')
+    dll = CDLL('./smallpt.so')
+
     dll.addSphere.argtypes = [c_double, c_double, c_double, c_double]
     dll.addLight.argtypes = [c_double, c_double, c_double, c_double]
 
