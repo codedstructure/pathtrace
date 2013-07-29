@@ -9,15 +9,33 @@
 #include <future>
 
 #include "vec.h"
+#include "halton.h"
 
 struct Ray { vec3 o, d; Ray(vec3 o_, vec3 d_) : o(o_), d(d_) {} };
 enum Refl_t { DIFF, SPEC, REFR };  // material types, used in radiance()
 
+struct Rng {
+    virtual double next() = 0;
+};
+
+struct Prng : public Rng {
+    Prng(long seed) {
+        data[0] = 0;
+        data[1] = 0;
+        data[2] = seed;
+    }
+
+    double next() {
+        return erand48(data);
+    }
+private:
+    unsigned short data[3];
+};
 
 struct Shape {
     virtual double intersect(const Ray& r) const = 0;
     virtual vec3 getNormal(const vec3& poi) const = 0;
-    virtual Ray getLightSample(const vec3& origin, double* omega, unsigned short* Xi) const = 0;
+    virtual Ray getLightSample(const vec3& origin, double* omega, Rng* Xi) const = 0;
 
     Refl_t refl;      // reflection type (DIFFuse, SPECular, REFRactive)
     vec3 e, c;        // emission, color
@@ -44,12 +62,12 @@ struct Sphere : public Shape {
         return normalize(poi - p);
     };
 
-    Ray getLightSample(const vec3& origin, double* omega, unsigned short* Xi) const {
+    Ray getLightSample(const vec3& origin, double* omega, Rng* Xi) const {
         vec3 sw=p - origin;
         vec3 su=normalize((fabs(sw.x)>.1 ? vec3(0,1) : vec3(1)) % sw);
         vec3 sv=sw % su;
         double cos_a_max = sqrt(1-rad*rad/dot(origin-p, origin-p));
-        double eps1 = erand48(Xi), eps2 = erand48(Xi);
+        double eps1 = Xi->next(), eps2 = Xi->next();
         double cos_a = 1-eps1+eps1*cos_a_max;
         double sin_a = sqrt(1-cos_a*cos_a);
         double phi = 2*M_PI*eps2;
@@ -94,7 +112,7 @@ bool intersect(const Ray &r, double &t, int &id) {
     return t<inf;
 }
 
-vec3 radiance(const Ray &r, int depth, unsigned short *Xi, int E=1) {
+vec3 radiance(const Ray &r, int depth, Rng *Xi, int E=1) {
     double t;                               // distance to intersection
     int id=0;                               // id of intersected object
 
@@ -110,7 +128,7 @@ vec3 radiance(const Ray &r, int depth, unsigned short *Xi, int E=1) {
     double p = f.x>f.y && f.x>f.z ? f.x : f.y>f.z ? f.y : f.z; // max refl
 
     if (++depth>5 || !p) {
-        if (erand48(Xi)<p) {
+        if (Xi->next()<p) {
             f=f*(1/p);
         } else {
             return obj->e * E; //R.R
@@ -118,7 +136,7 @@ vec3 radiance(const Ray &r, int depth, unsigned short *Xi, int E=1) {
     }
 
     if (obj->refl == DIFF) {                  // Ideal DIFFUSE reflection
-        double r1=2*M_PI*erand48(Xi), r2=erand48(Xi), r2s=sqrt(r2);
+        double r1=2*M_PI*Xi->next(), r2=Xi->next(), r2s=sqrt(r2);
         vec3 w=nl;
         vec3 u=normalize((fabs(w.x)>.1?vec3(0,1):vec3(1))%w);
         vec3 v=w%u;
@@ -149,7 +167,7 @@ vec3 radiance(const Ray &r, int depth, unsigned short *Xi, int E=1) {
     vec3 tdir = normalize(r.d*nnt - n*((into?1:-1)*(ddn*nnt+sqrt(cos2t))));
     double a=nt-nc, b=nt+nc, R0=a*a/(b*b), c = 1-(into?-ddn:dot(tdir, n));
     double Re=R0+(1-R0)*c*c*c*c*c,Tr=1-Re,P=.25+.5*Re,RP=Re/P,TP=Tr/(1-P);
-    return obj->e + f * (depth>2 ? (erand48(Xi)<P ?   // Russian roulette
+    return obj->e + f * (depth>2 ? (Xi->next()<P ?   // Russian roulette
                 radiance(reflRay,depth,Xi)*RP:radiance(Ray(x,tdir),depth,Xi)*TP) :
             radiance(reflRay,depth,Xi)*Re+radiance(Ray(x,tdir),depth,Xi)*Tr);
 }
@@ -171,14 +189,15 @@ int get_row_number() {
 }
 
 void calc_row(int y, int w, int h, Ray cam, int samps, vec3 cx, vec3 cy, vec3* c) {
-    for (unsigned short x=0, Xi[3]={0,0,static_cast<unsigned short>(y*y*y)}; x<w; x++) {   // Loop cols
+    Rng *Xi=new Prng(static_cast<long>(y*y*y));
+    for (unsigned short x=0; x<w; x++) {   // Loop cols
         for (int sy=0, i=(h-y-1)*w+x; sy<2; sy++) {    // 2x2 subpixel rows
             for (int sx=0; sx<2; sx++) {        // 2x2 subpixel cols
                 auto r  = vec3();
                 for (int s=0; s<samps; s++) {
-                    double r1=2*erand48(Xi);
+                    double r1=2*Xi->next();
                     double dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1);
-                    double r2=2*erand48(Xi);
+                    double r2=2*Xi->next();
                     double dy=r2<1 ? sqrt(r2)-1: 1-sqrt(2-r2);
 
                     vec3 d = cx*( ( (sx+.5 + dx)/2 + x)/w - .5) +
