@@ -9,7 +9,6 @@
 #include <future>
 
 #include "vec.h"
-#include "halton.h"
 
 struct Ray { vec3 o, d; Ray(vec3 o_, vec3 d_) : o(o_), d(d_) {} };
 enum Refl_t { DIFF, SPEC, REFR };  // material types, used in radiance()
@@ -17,6 +16,8 @@ enum Refl_t { DIFF, SPEC, REFR };  // material types, used in radiance()
 struct Rng {
     virtual double next() = 0;
 };
+
+#include "halton.h"
 
 struct Prng : public Rng {
     Prng(long seed) {
@@ -189,11 +190,16 @@ int get_row_number() {
 }
 
 void calc_row(int y, int w, int h, Ray cam, int samps, vec3 cx, vec3 cy, vec3* c) {
+#define QMC
+#ifdef QMC
+    Rng *Xi=new Halton(static_cast<long>(y*y*y), 17);
+#else
     Rng *Xi=new Prng(static_cast<long>(y*y*y));
-    for (unsigned short x=0; x<w; x++) {   // Loop cols
+#endif
+    for (int x=0; x<w; x++) {   // Loop cols
         for (int sy=0, i=(h-y-1)*w+x; sy<2; sy++) {    // 2x2 subpixel rows
             for (int sx=0; sx<2; sx++) {        // 2x2 subpixel cols
-                auto r  = vec3();
+                auto r = vec3();
                 for (int s=0; s<samps; s++) {
                     double r1=2*Xi->next();
                     double dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1);
