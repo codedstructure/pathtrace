@@ -56,7 +56,7 @@ struct Sphere : public Shape {
     };
 
     Ray getLightSample(const vec3& origin, double* omega, unsigned short* Xi) const {
-        vec3 sw=p.x;
+        vec3 sw=p - origin;
         vec3 su=normalize((fabs(sw.x)>.1 ? vec3(0,1) : vec3(1)) % sw);
         vec3 sv=sw % su;
         double cos_a_max = sqrt(1-rad*rad/dot(origin-p, origin-p));
