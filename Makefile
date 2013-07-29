@@ -1,29 +1,37 @@
-#
-# TODO: vec.h dependency doesn't seem to work for ${SHARED_LIB}
-#
 SOURCES=$(wildcard *.cc)
 OBJECTS=$(SOURCES:.cc=.o)
 LDFLAGS=
-DEPS=$(SOURCES:.cc=.d)
+DEPS=$(wildcard *.d)
 BIN=smallpt
 SHARED_LIB=smallpt.so
+IMAGE_PPM=image.ppm
 
 CC=g++
-CFLAGS=-g -O3
+CFLAGS=-MMD -g -O3
 CXX=${CC}
 CXXFLAGS=${CFLAGS}
 
 all: $(BIN) $(SHARED_LIB)
 
-.PHONY: clean
+.PHONY: clean display pytest
 
 $(BIN): $(OBJECTS)
-	${CC} -MMD ${LDFLAGS} ${OBJECTS} -o $@
+	${CC} ${CFLAGS} ${LDFLAGS} ${OBJECTS} -o $@
 
-${SHARED_LIB}: ${SOURCES}
-	${CC} -MMD --shared ${OBJECTS} -o $@
+# Need a different deps file for the shared object
+${SHARED_LIB}: ${SHARED_LIB:.so=.cc}
+	${CC} ${CFLAGS} -MF $@.d --shared ${LDFLAGS} $< -o $@
 
 clean:
-	$(RM) $(OBJECTS) $(DEPS) $(BIN) ${SHARED_LIB}
+	$(RM) $(OBJECTS) $(DEPS) $(BIN) ${SHARED_LIB} ${IMAGE_PPM}
+
+${IMAGE_PPM}: $(BIN)
+	./${BIN} 20
+
+display: $(IMAGE_PPM)
+	display ${IMAGE_PPM} &
+
+pytest: ${SHARED_LIB}
+	python pymain.py image.ppm
 
 -include $(DEPS)
