@@ -6,20 +6,6 @@
 #include <vector>
 
 #include "vec.h"
-/*
-   struct vec3 {        // Usage: time ./smallpt 5000 && xv image.ppm
-   union { double x, s, r; };
-   union { double y, t, g; };
-   union { double z, u, b; };
-   vec3(double x_=0, double y_=0, double z_=0) { x=x_; y=y_; z=z_; }
-   vec3 operator+(const vec3 &b) const { return vec3(x+b.x,y+b.y,z+b.z); }
-   vec3 operator-(const vec3 &b) const { return vec3(x-b.x,y-b.y,z-b.z); }
-   vec3 operator*(double b) const { return vec3(x*b,y*b,z*b); }
-   vec3 mult(const vec3 &b) const { return vec3(x*b.x,y*b.y,z*b.z); }
-   vec3& norm() { return *this = *this * (1/sqrt(x*x+y*y+z*z)); }
-   double dot(const vec3 &b) const { return x*b.x+y*b.y+z*b.z; } // cross:
-   vec3 operator%(vec3&b) {return vec3(y*b.z-z*b.y,z*b.x-x*b.z,x*b.y-y*b.x);}
-   };*/
 
 struct Ray { vec3 o, d; Ray(vec3 o_, vec3 d_) : o(o_), d(d_) {} };
 enum Refl_t { DIFF, SPEC, REFR };  // material types, used in radiance()
@@ -164,13 +150,15 @@ vec3 radiance(const Ray &r, int depth, unsigned short *Xi, int E=1) {
             radiance(reflRay,depth,Xi)*Re+radiance(Ray(x,tdir),depth,Xi)*Tr);
 }
 
-extern "C" void addSphere(const double radius, vec3 center) {
+extern "C" void addSphere(const double radius, double x, double y, double z) {
+    scene.push_back(new Sphere(radius, vec3(x, y, z), vec3(), vec3(0.5, 0.5, 0.5), DIFF));
+}
 
+extern "C" void addLight(const double radius, double x, double y, double z) {
+    scene.push_back(new Sphere(radius, vec3(x, y, z), vec3(20, 20, 20), vec3(), DIFF));
 }
 
 extern "C" void render(const char* const fn, int w, int h, int samps) {
-
-    buildScene();
 
     Ray cam(vec3(50,52,295.6), normalize(vec3(0,-0.042612,-1))); // cam pos, dir
 
@@ -178,7 +166,7 @@ extern "C" void render(const char* const fn, int w, int h, int samps) {
     vec3 cy=normalize(cx%cam.d)*.5135;
     vec3 r;
     vec3 *c=new vec3[w*h];
-//#pragma omp parallel for schedule(dynamic, 1) private(r)       // OpenMP
+
     for (int y=0; y<h; y++) {                       // Loop over image rows
         fprintf(stderr,"\rRendering (%d spp) %5.2f%%",samps*4,100.*y/(h-1));
         for (unsigned short x=0, Xi[3]={0,0,y*y*y}; x<w; x++)   // Loop cols

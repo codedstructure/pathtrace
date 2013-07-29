@@ -4,5 +4,8 @@
 
 int main(int argc, char *argv[]) {
     int w=512, h=384, samps = argc==2 ? atoi(argv[1])/4 : 1; // # samples
+
+    buildScene();
+
     render("image.ppm", w, h, samps);
 }
