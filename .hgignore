@@ -3,3 +3,5 @@ syntax: glob
 *.d
 *.o
 *.so
+*.dSYM/
+smallpt
