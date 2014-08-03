@@ -89,7 +89,7 @@ void buildScene() {
     scene.push_back(new Sphere(1e5, vec3(50, 1e5, 81.6),    vec3(),vec3(.75,.75,.75),DIFF));//Botm
     scene.push_back(new Sphere(1e5, vec3(50,-1e5+81.6,81.6),vec3(),vec3(.75,.75,.75),DIFF));//Top
     scene.push_back(new Sphere(16.5,vec3(27,16.5,47),       vec3(),vec3(1,1,1)*.999, SPEC));//Mirr
-    scene.push_back(new Sphere(16.5,vec3(73,16.5,78),       vec3(),vec3(1,1,1)*.999, REFR));//Glas
+    //scene.push_back(new Sphere(16.5,vec3(73,16.5,78),       vec3(),vec3(1,1,1)*.999, REFR));//Glas
     scene.push_back(new Sphere(1.5, vec3(50,81.6-16.5,81.6),vec3(4,4,4)*100,  vec3(), DIFF)); //Lite
         /*
            Sphere(1e5, vec3(50, 1e5, 81.6), vec3(), vec3(.75, .75, .75), DIFF),

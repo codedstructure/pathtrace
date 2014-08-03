@@ -6,10 +6,14 @@ BIN=smallpt
 SHARED_LIB=smallpt.so
 IMAGE_PPM=image.ppm
 
-CC=g++
-#CC=clang++
-CFLAGS=-MMD -g -O3 --std=c++11
-#--stdlib=libc++
+# Linux:
+#CC=g++
+#CFLAGS=-MMD -g -O3 --std=c++11
+
+# Mac:
+CC=clang++
+CFLAGS=-MMD -g -O3 --std=c++11 --stdlib=libc++
+
 CXX=${CC}
 CXXFLAGS=${CFLAGS}
 
